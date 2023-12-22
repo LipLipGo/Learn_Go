@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webook-record-mysql
+  labels:
+    app: webook-record-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webook-record-mysql
+  template:
+    metadata:
+      name: webook-record-mysql
+      labels:
+        app: webook-record-mysql
+    spec:
+      containers:
+        - name: webook-record-mysql
+          image: mysql:8.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: root
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - mountPath: /var/lib/mysql   # mysql存储数据路
+              name: mysql-storage   # 将这个路径挂载到这个存储对应的PVC上
+      restartPolicy: Always
+      volumes:
+        - name: mysql-storage   # 存储名字
+          persistentVolumeClaim:
+            claimName: webook-mysql-pvc   # 存储对应的PVC
+
+
+      

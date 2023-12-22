@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: webook-mysql-pvc
+spec:
+  storageClassName: record  # 存储的类别，根据这个去寻找PV
+  accessModes:
+    - ReadWriteOnce # 读写，只允许一个Pod访问
+  resources:
+    requests:   # 声明需要的资源空间
+      storage: 1Gi

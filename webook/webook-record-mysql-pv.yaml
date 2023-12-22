@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: webook-mysql-pvc
+spec:
+  storageClassName: record  # PVC根据这个名字来找PV
+  accessModes:
+    - ReadWriteOnce # 可读可写，只能被一个PVC挂载
+  capacity:   # 可提供的存储资源
+    storage: 1Gi
+  hostPath:
+    path: "/mnt/data" # PV的存储路径

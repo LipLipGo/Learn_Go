@@ -1,0 +1,25 @@
+version: "3"  # 版本
+# 我这个 docker compose 由几个服务组成
+services:
+  mysql8:
+    image: mysql:8.0
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password    # 设置登录校验，使用账号密码登陆
+    environment:
+      MYSQL_ROOT_PASSWORD: root   # 根用户密码
+    volumes:
+#  设置初始化脚本
+      - ./script/mysql:/docker-entrypoint-initdb.d/
+    ports:
+#    外部访问使用13316
+      - 13316:3306
+  redis:
+    image: "bitnami/redis:latest"
+    restart: always
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes  # 允许不使用密码访问
+    ports:
+      - '6379:6379'
+
+
+
