@@ -3,6 +3,7 @@ package web
 import (
 	"Learn_Go/webook/internal/domain"
 	"Learn_Go/webook/internal/service"
+	"fmt"
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -185,7 +186,7 @@ func (h *UserHandler) LogInJWT(ctx *gin.Context) {
 			Uid:       u.Id,
 			UserAgent: ctx.GetHeader("User-Agent"),
 			// 设置过期时间
-			RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute))},
+			RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 30))},
 		}
 		token := jwt.NewWithClaims(jwt.SigningMethodHS512, uc) // SigningMethod的安全性和性能有一些差异，没有要求可随意选
 		tokenStr, err := token.SignedString(JWTKey)            // 这里token是一个结构体，但是传到前端需要一串字符，通过这个方法转换，其中不同的SigningMethod有不同的参数类型
@@ -225,20 +226,28 @@ func (h *UserHandler) Edit(ctx *gin.Context) {
 
 	var req EditReq
 	if err := ctx.Bind(&req); err != nil {
-		ctx.String(http.StatusOK, "系统错误!")
+		//ctx.String(http.StatusOK, "系统错误!")
 		return
 	}
 
-	// 获取用户的UserId
-	sess := sessions.Default(ctx)
-	UserId := sess.Get("UserId")
+	uc, ok := ctx.MustGet("user").(UserClaims)
 
-	if UserId == nil {
-		ctx.String(http.StatusOK, "未登录，请先登陆！")
-		ctx.AbortWithStatus(http.StatusUnauthorized) // http.StatusUnauthorized 通常用于代表没登陆
+	if !ok {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
-	userId := UserId.(int64)
+	fmt.Println(req.BirthDay)
+
+	//// 获取用户的UserId
+	//sess := sessions.Default(ctx)
+	//UserId := sess.Get("UserId")
+	//
+	//if UserId == nil {
+	//	ctx.String(http.StatusOK, "未登录，请先登陆！")
+	//	ctx.AbortWithStatus(http.StatusUnauthorized) // http.StatusUnauthorized 通常用于代表没登陆
+	//	return
+	//}
+	//userId := UserId.(int64)
 
 	// 校验昵称
 	if req.NikeName == "" {
@@ -251,7 +260,7 @@ func (h *UserHandler) Edit(ctx *gin.Context) {
 
 	// 校验生日字段格式，通过time.parse校验，不需要使用正则表达式
 
-	_, err := time.Parse(time.DateOnly, req.BirthDay)
+	birthday, err := time.Parse(time.DateOnly, req.BirthDay)
 	if err != nil {
 		ctx.String(http.StatusOK, "生日格式输入错误！")
 		return
@@ -265,21 +274,22 @@ func (h *UserHandler) Edit(ctx *gin.Context) {
 		})
 		return
 	}
+
 	err = h.svc.UpdateNonSensitiveInfo(ctx, domain.User{
-		Id:       userId,
+		Id:       uc.Uid,
 		NickName: req.NikeName,
-		BirthDay: req.BirthDay,
+		BirthDay: birthday,
 		AboutMe:  req.AboutMe,
 	})
 
 	if err != nil {
 		ctx.JSON(http.StatusOK, Result{
 			code: 5,
-			msg:  "系统错误",
+			msg:  "系统异常",
 		})
 		return
 	}
-	ctx.JSON(http.StatusOK, Result{msg: "OK"})
+	ctx.String(http.StatusOK, "更新成功")
 
 }
 
@@ -300,6 +310,29 @@ func (h *UserHandler) Edit(ctx *gin.Context) {
 
 func (h *UserHandler) Profile(ctx *gin.Context) {
 
-	ctx.String(http.StatusOK, "这是profile")
+	uc, ok := ctx.MustGet("user").(UserClaims)
+	if !ok {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	u, err := h.svc.FindById(ctx, uc.Uid)
+	if err != nil {
+		ctx.String(http.StatusOK, "系统异常！")
+		return
+	}
+
+	type User struct {
+		Nickname string `json:"nickname"`
+		Email    string `json:"email"`
+		AboutMe  string `json:"aboutMe"`
+		Birthday string `json:"birthday"`
+	}
+	ctx.JSON(http.StatusOK, User{
+		Nickname: u.NickName,
+		Email:    u.Email,
+		AboutMe:  u.AboutMe,
+		Birthday: u.BirthDay.Format(time.DateOnly),
+	})
 
 }

@@ -4,6 +4,7 @@ import (
 	"Learn_Go/webook/internal/domain"
 	"Learn_Go/webook/internal/repository"
 	"context"
+	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -56,7 +57,18 @@ func (svc *UserService) Login(ctx context.Context, email string, password string
 }
 
 func (svc *UserService) UpdateNonSensitiveInfo(ctx context.Context, u domain.User) error {
+
 	return svc.repo.UpdateNonZeroFields(ctx, u)
+}
+
+func (svc *UserService) FindById(ctx *gin.Context, uid int64) (domain.User, error) {
+
+	u, err := svc.repo.FindById(ctx, uid)
+	if err != nil {
+		return domain.User{}, err
+	}
+
+	return u, nil
 }
 
 // 在service层进行密码加密（PBKDF2、BCrypt） ，同样的文本加密后的结果都不同
