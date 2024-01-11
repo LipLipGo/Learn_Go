@@ -1,20 +1,20 @@
 package main
 
 import (
-	"Learn_Go/webook/config"
 	"Learn_Go/webook/internal/repository"
+	"Learn_Go/webook/internal/repository/cache"
 	"Learn_Go/webook/internal/repository/dao"
 	"Learn_Go/webook/internal/service"
+	"Learn_Go/webook/internal/service/sms"
+	"Learn_Go/webook/internal/service/sms/localsms"
 	"Learn_Go/webook/internal/web"
 	"Learn_Go/webook/internal/web/middleware"
-	"Learn_Go/webook/pkg/ginx/middleware/ratelimit"
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"net/http"
 	"strings"
@@ -23,41 +23,42 @@ import (
 
 func main() {
 
-	db := initDB()
-	server := initWebServer()
-
-	initUserHdl(db, server)
+	server := InitWebServer()
+	//db := initDB()
+	//rd := initRedis()
+	//server := initWebServer()
+	//codeSvc := initCodeSvc(rd)
+	//initUserHdl(db, server, rd, codeSvc)
 
 	// 首先去除mysql和redis依赖，构造最简单的Web服务部署到k8s上
-	//server := gin.Default()
+
 	server.GET("/hello", func(ctx *gin.Context) {
 		ctx.String(http.StatusOK, "hello，启动成功了！")
 	})
 
-	server.Run(":8081")
+	server.Run(":8080")
 }
 
-func initUserHdl(db *gorm.DB, server *gin.Engine) {
+func initUserHdl(db *gorm.DB, server *gin.Engine, rd redis.Cmdable, codeSvc *service.CodeService) {
 	ud := dao.NewUserDao(db)
-	ur := repository.NewUserRepository(ud)
+	uc := cache.NewUserCache(rd)
+	ur := repository.NewUserRepository(ud, uc)
 	us := service.NewUserService(ur)
 
 	//hdl := &web.UserHandler{}
-	hdl := web.NewUserHandler(us) // 设置了正则表达式预编译后需要替换为这个方法
+	hdl := web.NewUserHandler(us, codeSvc) // 设置了正则表达式预编译后需要替换为这个方法
 	hdl.RegisterRouters(server)
 }
 
-func initDB() *gorm.DB {
-	db, err := gorm.Open(mysql.Open(config.Config.DB.DNS))
-	if err != nil {
-		panic(err)
-	}
+func initCodeSvc(redisClient redis.Cmdable) *service.CodeService {
+	cc := cache.NewCodeCache(redisClient)
+	cRepo := repository.NewCodeRepository(cc)
+	return service.NewCodeService(cRepo, initMemorySms())
 
-	err = dao.InitTables(db)
-	if err != nil {
-		panic(err)
-	}
-	return db
+}
+
+func initMemorySms() sms.Service {
+	return localsms.NewService()
 }
 
 func initWebServer() *gin.Engine {
@@ -77,7 +78,7 @@ func initWebServer() *gin.Engine {
 
 	server.Use(cors.New(cors.Config{ // 通过 Middleware（cors） 处理跨域请求
 		//AllowAllOrigins: true,	允许所有的源头
-		//AllowOrigins: []string{"http://localhost:3000"},	允许一些
+		//AllowOrigins: []string{"http://localhost:3000"}, //允许一些
 		//AllowMethods: []string{"POST"},   最好不要设置，允许所有请求方法即可
 		AllowCredentials: true,                                      // cookie的数据是否允许传过来，正常情况下允许
 		AllowHeaders:     []string{"Content-Type", "Authorization"}, //报错，根据报错找到需要添加的headers
@@ -95,10 +96,11 @@ func initWebServer() *gin.Engine {
 		fmt.Println("这是一个 Middleware")
 	})
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: config.Config.Redis.Addr,
-	})
-	server.Use(ratelimit.NewBuilder(redisClient, time.Second, 100).Build())
+	//redisClient := redis.NewClient(&redis.Options{
+	//	Addr: config.Config.Redis.Addr,
+	//})
+	//// 一秒钟100次
+	//server.Use(ratelimit.NewBuilder(redisClient, time.Second, 100).Build())
 
 	//useSession(server)
 	useJWT(server)

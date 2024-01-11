@@ -72,7 +72,7 @@ function EditForm() {
             label="生日"
             name="birthday"
         >
-            <DatePicker format={"YYYY-MM-DD"}
+            <DatePicker format="YYYY-MM-DD"
                         placeholder={""}/>
         </Form.Item>
 

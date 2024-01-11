@@ -2,8 +2,8 @@ package dao
 
 import (
 	"context"
+	"database/sql"
 	"errors"
-	"github.com/gin-gonic/gin"
 	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 	"time"
@@ -50,9 +50,15 @@ func (dao *UserDao) UpdateById(ctx context.Context, entity User) error {
 	}).Error
 }
 
-func (dao *UserDao) FindById(ctx *gin.Context, uid int64) (User, error) {
+func (dao *UserDao) FindById(ctx context.Context, uid int64) (User, error) {
 	var u User
 	err := dao.db.WithContext(ctx).Where("id = ?", uid).First(&u).Error
+	return u, err
+}
+
+func (dao *UserDao) FindByPhone(ctx context.Context, phone string) (User, error) {
+	var u User
+	err := dao.db.WithContext(ctx).Where("phone = ?", phone).First(&u).Error
 	return u, err
 }
 
@@ -63,8 +69,8 @@ func NewUserDao(db *gorm.DB) *UserDao {
 }
 
 type User struct {
-	Id       int64  `gorm:"primaryKey,autoIncrement"` // 设置唯一索引；自增主键的优点：树单向增长，不存在叶分裂，适合于范围查询，充分利用操作系统的预读特性
-	Email    string `gorm:"unique"`
+	Id       int64          `gorm:"primaryKey,autoIncrement"` // 设置唯一索引；自增主键的优点：树单向增长，不存在叶分裂，适合于范围查询，充分利用操作系统的预读特性
+	Email    sql.NullString `gorm:"unique"`                   // 使用sql.NullString代表这一列可以为Null
 	Password string
 
 	// 这里时间使用 int64 ，是为了防止时区不一致问题，统一使用 UTC 0 的毫秒数，当需要将数据传给前端时再做对应处理
@@ -74,6 +80,7 @@ type User struct {
 	// 更新时间
 	Utime    int64
 	Birthday int64
-	AboutMe  string `gorm:"type=varchar(4096)"`
-	Nickname string `gorm:"type=varchar(128)"`
+	AboutMe  string         `gorm:"type=varchar(4096)"`
+	Nickname string         `gorm:"type=varchar(128)"`
+	Phone    sql.NullString `gorm:"unique"`
 }

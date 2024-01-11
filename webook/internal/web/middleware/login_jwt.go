@@ -17,7 +17,11 @@ func (m *LoginJWTMiddlewareBuilder) CheckLogin() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 
 		path := ctx.Request.URL.Path
-		if path == "/users/signup" || path == "/users/login" {
+		if path == "/users/signup" ||
+			path == "/users/login" ||
+			path == "/users/login_sms/code/send" ||
+			path == "/users/login_sms" {
+			// 不需要登录校验
 			return
 		}
 
@@ -70,9 +74,9 @@ func (m *LoginJWTMiddlewareBuilder) CheckLogin() gin.HandlerFunc {
 		//}
 
 		if expireTime.Sub(time.Now()) < time.Second*50 {
-			uc.ExpiresAt = jwt.NewNumericDate(time.Now().Add(time.Minute)) // 记录新的过期时间
-			newToken, err := token.SignedString(web.JWTKey)                // 获取新的token
-			ctx.Header("x-jwt-token", newToken)                            // 传入新的 token
+			uc.ExpiresAt = jwt.NewNumericDate(time.Now().Add(time.Minute * 30)) // 记录新的过期时间
+			newToken, err := token.SignedString(web.JWTKey)                     // 获取新的token
+			ctx.Header("x-jwt-token", newToken)                                 // 传入新的 token
 			if err != nil {
 				log.Println(err) // 如果刷新没成功，不影响登陆状态，不用中断
 			}
