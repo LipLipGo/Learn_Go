@@ -4,6 +4,7 @@ import (
 	"Learn_Go/webook/internal/web"
 	"Learn_Go/webook/internal/web/middleware"
 	"Learn_Go/webook/pkg/ginx/middleware/ratelimit"
+	"Learn_Go/webook/pkg/limiter"
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -41,7 +42,12 @@ func InitGinMiddleWares(redisClient redis.Cmdable) []gin.HandlerFunc {
 		}), func(ctx *gin.Context) {
 			fmt.Println("这是一个 Middleware")
 		},
-		ratelimit.NewBuilder(redisClient, time.Second, 100).Build(),
+		ratelimit.NewBuilder(limiter.NewRedisSlidingWindowLimiter(redisClient, time.Second, 100)).Build(),
 		(&middleware.LoginJWTMiddlewareBuilder{}).CheckLogin(),
+
+		// 使用 session 登录校验
+
+		//sessions.Sessions("ssid", cookie.NewStore([]byte("secret"))),
+		//(&middleware.LoginMiddlewareBuilder{}).CheckLogin(),
 	}
 }

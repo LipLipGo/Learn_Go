@@ -1,6 +1,6 @@
 //go:build wireinject
 
-package main
+package startup
 
 import (
 	"Learn_Go/webook/internal/repository"
@@ -16,7 +16,7 @@ import (
 func InitWebServer() *gin.Engine {
 	wire.Build(
 		// 第三方依赖
-		ioc.InitRedis, ioc.InitDB,
+		InitRedis, ioc.InitDB,
 		// dao
 		dao.NewGORMUserDao,
 		// cache

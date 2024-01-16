@@ -4,7 +4,7 @@
 //go:build !wireinject
 // +build !wireinject
 
-package main
+package startup
 
 import (
 	"Learn_Go/webook/internal/repository"
@@ -19,7 +19,7 @@ import (
 // Injectors from wire.go:
 
 func InitWebServer() *gin.Engine {
-	cmdable := ioc.InitRedis()
+	cmdable := InitRedis()
 	v := ioc.InitGinMiddleWares(cmdable)
 	db := ioc.InitDB()
 	userDao := dao.NewGORMUserDao(db)

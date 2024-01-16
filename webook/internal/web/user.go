@@ -24,11 +24,11 @@ const (
 type UserHandler struct {
 	emailRexExp    *regexp.Regexp
 	passwordRexExp *regexp.Regexp
-	svc            *service.UserService
-	codeSvc        *service.CodeService
+	svc            service.UserService
+	codeSvc        service.CodeService
 }
 
-func NewUserHandler(svc *service.UserService, codeSvc *service.CodeService) *UserHandler { // 预编译正则表达式，保证正则表达式正确，性能优化
+func NewUserHandler(svc service.UserService, codeSvc service.CodeService) *UserHandler { // 预编译正则表达式，保证正则表达式正确，性能优化
 	return &UserHandler{
 		emailRexExp:    regexp.MustCompile(emailRegexPattern, regexp.None),
 		passwordRexExp: regexp.MustCompile(passwordRegexPattern, regexp.None),

@@ -1,6 +1,7 @@
 package tencent
 
 import (
+	"Learn_Go/webook/pkg/limiter"
 	"context"
 	"fmt"
 	"github.com/ecodeclub/ekit"
@@ -12,9 +13,20 @@ type Service struct {
 	client   *sms.Client
 	appId    *string
 	signName *string
+	limiter  limiter.Limiter
 }
 
 func (s *Service) Send(ctx context.Context, tplId string, args []string, number ...string) error {
+	// 下面的这个限流实现：
+	// 从功能上讲，没有问题；从扩展性上讲，全是问题；从无侵入式上讲，更加是问题
+	// 如果将来我有别的短信服务商，别的短信服务商也需要限流；如果由别的类似的功能，个需要修改这个方法，改来改去就堆成了屎山
+	//limited, err := s.limiter.Limit(ctx, "tencent_sms_service")
+	//if err != nil {
+	//	return err
+	//}
+	//if limited {
+	//	return errors.New("触发了限流")
+	//}
 
 	request := sms.NewSendSmsRequest()
 	request.SetContext(ctx)
@@ -56,11 +68,12 @@ func (s *Service) toPtrSlice(args []string) []*string {
 	})
 }
 
-func NewService(client *sms.Client, appId string, SignName string) *Service {
+func NewService(client *sms.Client, appId string, SignName string, l limiter.Limiter) *Service {
 	return &Service{
 		client:   client,
 		appId:    &appId,
 		signName: &SignName,
+		limiter:  l,
 	}
 
 }

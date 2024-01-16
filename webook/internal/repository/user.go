@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/gin-gonic/gin"
+	"log"
 	"time"
 )
 
@@ -15,23 +16,31 @@ var (
 	ErrUserNotFound   = dao.ErrRecordNotFound
 )
 
-type UserRepository struct {
-	dao   *dao.UserDao
-	cache *cache.UserCache
+type UserRepository interface {
+	Create(ctx context.Context, u domain.User) error
+	UpdateNonZeroFields(ctx context.Context, u domain.User) error
+	FindByPhone(ctx context.Context, phone string) (domain.User, error)
+	FindById(ctx context.Context, uid int64) (domain.User, error)
+	FindByEmail(ctx context.Context, email string) (domain.User, error)
 }
 
-func NewUserRepository(dao *dao.UserDao, c *cache.UserCache) *UserRepository {
-	return &UserRepository{
+type CachedUserRepository struct {
+	dao   dao.UserDao
+	cache cache.UserCache
+}
+
+func NewCachedUserRepository(dao dao.UserDao, c cache.UserCache) UserRepository {
+	return &CachedUserRepository{
 		dao:   dao,
 		cache: c,
 	}
 }
 
-func (repo *UserRepository) Create(ctx context.Context, u domain.User) error {
+func (repo *CachedUserRepository) Create(ctx context.Context, u domain.User) error {
 	return repo.dao.Insert(ctx, repo.toEntity(u))
 }
 
-func (repo *UserRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {
+func (repo *CachedUserRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {
 	u, err := repo.dao.FindByEmail(ctx, email)
 	if err != nil {
 		return domain.User{}, err
@@ -40,7 +49,7 @@ func (repo *UserRepository) FindByEmail(ctx context.Context, email string) (doma
 
 }
 
-func (repo *UserRepository) toDomain(u dao.User) domain.User {
+func (repo *CachedUserRepository) toDomain(u dao.User) domain.User {
 	return domain.User{
 		Id:       u.Id,
 		Email:    u.Email.String,
@@ -49,14 +58,15 @@ func (repo *UserRepository) toDomain(u dao.User) domain.User {
 		AboutMe:  u.AboutMe,
 		BirthDay: time.UnixMilli(u.Birthday),
 		NickName: u.Nickname,
+		Ctime:    time.UnixMilli(u.Ctime),
 	}
 }
 
-func (repo *UserRepository) UpdateNonZeroFields(ctx context.Context, u domain.User) error {
+func (repo *CachedUserRepository) UpdateNonZeroFields(ctx context.Context, u domain.User) error {
 	return repo.dao.UpdateById(ctx, repo.toEntity(u))
 }
 
-func (repo *UserRepository) toEntity(u domain.User) dao.User {
+func (repo *CachedUserRepository) toEntity(u domain.User) dao.User {
 	return dao.User{
 		Id: u.Id,
 		Email: sql.NullString{
@@ -74,7 +84,7 @@ func (repo *UserRepository) toEntity(u domain.User) dao.User {
 	}
 }
 
-func (repo *UserRepository) FindById(ctx context.Context, uid int64) (domain.User, error) {
+func (repo *CachedUserRepository) FindById(ctx context.Context, uid int64) (domain.User, error) {
 	du, err := repo.cache.Get(ctx, uid)
 
 	// 只要err为nil，就返回
@@ -95,7 +105,9 @@ func (repo *UserRepository) FindById(ctx context.Context, uid int64) (domain.Use
 	err = repo.cache.Set(ctx, du)
 	if err != nil {
 		// redis 有问题。可能是网路有问题，也可能是 redis 本身就崩溃了。如果这里出问题了，那么下次查询还是会查数据库，这种现象叫缓存击穿，那么数据库的压力也会很大
-		return domain.User{}, err
+		// 如果缓存写入失败，我们不中断，输出一下错误就好
+		//return domain.User{}, err
+		log.Println(err)
 	}
 
 	return du, nil
@@ -104,7 +116,7 @@ func (repo *UserRepository) FindById(ctx context.Context, uid int64) (domain.Use
 
 // 查询的另一种写法，进一步判定err是何种错误
 
-func (repo *UserRepository) FindByIdV1(ctx *gin.Context, uid int64) (domain.User, error) {
+func (repo *CachedUserRepository) FindByIdV1(ctx *gin.Context, uid int64) (domain.User, error) {
 	du, err := repo.cache.Get(ctx, uid)
 
 	// 只要err为nil，就返回
@@ -135,7 +147,7 @@ func (repo *UserRepository) FindByIdV1(ctx *gin.Context, uid int64) (domain.User
 
 }
 
-func (repo *UserRepository) FindByPhone(ctx context.Context, phone string) (domain.User, error) {
+func (repo *CachedUserRepository) FindByPhone(ctx context.Context, phone string) (domain.User, error) {
 	u, err := repo.dao.FindByPhone(ctx, phone)
 	if err != nil {
 		return domain.User{}, err

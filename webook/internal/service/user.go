@@ -7,8 +7,16 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type UserService struct {
-	repo *repository.UserRepository
+type UserService interface {
+	Signup(ctx context.Context, u domain.User) error
+	Login(ctx context.Context, email string, password string) (domain.User, error)
+	UpdateNonSensitiveInfo(ctx context.Context, u domain.User) error
+	FindOrCreate(ctx context.Context, phone string) (domain.User, error)
+	FindById(ctx context.Context, uid int64) (domain.User, error)
+}
+
+type userService struct {
+	repo repository.UserRepository
 }
 
 var (
@@ -16,14 +24,14 @@ var (
 	ErrInvalidUserOrPassword = repository.ErrUserNotFound   // 账号或密码不正确，安全性更高
 )
 
-func NewUserService(repo *repository.UserRepository) *UserService {
-	return &UserService{
+func NewuserService(repo repository.UserRepository) UserService {
+	return &userService{
 		repo: repo,
 	}
 
 }
 
-func (svc *UserService) Signup(ctx context.Context, u domain.User) error {
+func (svc *userService) Signup(ctx context.Context, u domain.User) error {
 
 	// 密码加密
 	hash, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
@@ -34,7 +42,7 @@ func (svc *UserService) Signup(ctx context.Context, u domain.User) error {
 	return svc.repo.Create(ctx, u)
 }
 
-func (svc *UserService) Login(ctx context.Context, email string, password string) (domain.User, error) {
+func (svc *userService) Login(ctx context.Context, email string, password string) (domain.User, error) {
 	u, err := svc.repo.FindByEmail(ctx, email)
 
 	if err == ErrInvalidUserOrPassword {
@@ -55,12 +63,12 @@ func (svc *UserService) Login(ctx context.Context, email string, password string
 
 }
 
-func (svc *UserService) UpdateNonSensitiveInfo(ctx context.Context, u domain.User) error {
+func (svc *userService) UpdateNonSensitiveInfo(ctx context.Context, u domain.User) error {
 
 	return svc.repo.UpdateNonZeroFields(ctx, u)
 }
 
-func (svc *UserService) FindById(ctx context.Context, uid int64) (domain.User, error) {
+func (svc *userService) FindById(ctx context.Context, uid int64) (domain.User, error) {
 
 	u, err := svc.repo.FindById(ctx, uid)
 	if err != nil {
@@ -70,7 +78,7 @@ func (svc *UserService) FindById(ctx context.Context, uid int64) (domain.User, e
 	return u, nil
 }
 
-func (svc *UserService) FindOrCreate(ctx context.Context, phone string) (domain.User, error) {
+func (svc *userService) FindOrCreate(ctx context.Context, phone string) (domain.User, error) {
 
 	// 先找一下，我们认为，大部分用户是已经存在的用户
 	u, err := svc.repo.FindByPhone(ctx, phone)
