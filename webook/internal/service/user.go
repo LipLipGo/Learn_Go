@@ -13,6 +13,7 @@ type UserService interface {
 	UpdateNonSensitiveInfo(ctx context.Context, u domain.User) error
 	FindOrCreate(ctx context.Context, phone string) (domain.User, error)
 	FindById(ctx context.Context, uid int64) (domain.User, error)
+	FindOrCreateByWechat(ctx context.Context, info domain.WechatInfo) (domain.User, error)
 }
 
 type userService struct {
@@ -106,3 +107,24 @@ func (svc *userService) FindOrCreate(ctx context.Context, phone string) (domain.
 }
 
 // 在service层进行密码加密（PBKDF2、BCrypt） ，同样的文本加密后的结果都不同
+
+func (svc *userService) FindOrCreateByWechat(ctx context.Context, wechatInfo domain.WechatInfo) (domain.User, error) {
+
+	// 这里因为我们开发的应用不存在多个应用，所以我们就直接使用OpenId
+	u, err := svc.repo.FindByWechat(ctx, wechatInfo.OpenId)
+
+	// 这里直接判断这个错误是否是用户未找到，若不是，则有两种情况 1. nil，直接返回用户信息 2.系统错误
+	if err != repository.ErrUserNotFound {
+		return u, err
+	}
+	// 没有进去分支说明没找到用户，那么创建用户
+	err = svc.repo.Create(ctx, domain.User{
+		WechatInfo: wechatInfo,
+	})
+
+	if err != nil && err != ErrDuplicateUser {
+		return domain.User{}, err
+	}
+
+	return svc.repo.FindByWechat(ctx, wechatInfo.OpenId)
+}

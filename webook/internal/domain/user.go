@@ -5,12 +5,13 @@ import (
 )
 
 type User struct {
-	Id       int64
-	Email    string
-	Password string
-	NickName string
-	BirthDay time.Time
-	AboutMe  string
-	Phone    string
-	Ctime    time.Time
+	Id         int64
+	Email      string
+	Password   string
+	NickName   string
+	BirthDay   time.Time
+	AboutMe    string
+	Phone      string
+	Ctime      time.Time
+	WechatInfo WechatInfo
 }

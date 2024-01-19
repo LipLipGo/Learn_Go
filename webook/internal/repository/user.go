@@ -22,6 +22,7 @@ type UserRepository interface {
 	FindByPhone(ctx context.Context, phone string) (domain.User, error)
 	FindById(ctx context.Context, uid int64) (domain.User, error)
 	FindByEmail(ctx context.Context, email string) (domain.User, error)
+	FindByWechat(ctx context.Context, openId string) (domain.User, error)
 }
 
 type CachedUserRepository struct {
@@ -51,14 +52,15 @@ func (repo *CachedUserRepository) FindByEmail(ctx context.Context, email string)
 
 func (repo *CachedUserRepository) toDomain(u dao.User) domain.User {
 	return domain.User{
-		Id:       u.Id,
-		Email:    u.Email.String,
-		Phone:    u.Phone.String,
-		Password: u.Password,
-		AboutMe:  u.AboutMe,
-		BirthDay: time.UnixMilli(u.Birthday),
-		NickName: u.Nickname,
-		Ctime:    time.UnixMilli(u.Ctime),
+		Id:         u.Id,
+		Email:      u.Email.String,
+		Phone:      u.Phone.String,
+		Password:   u.Password,
+		AboutMe:    u.AboutMe,
+		BirthDay:   time.UnixMilli(u.Birthday),
+		NickName:   u.Nickname,
+		Ctime:      time.UnixMilli(u.Ctime),
+		WechatInfo: domain.WechatInfo{OpenId: u.WechatOpenId.String, UnionId: u.WechatUnionId.String},
 	}
 }
 
@@ -81,6 +83,14 @@ func (repo *CachedUserRepository) toEntity(u domain.User) dao.User {
 		Birthday: u.BirthDay.UnixMilli(),
 		AboutMe:  u.AboutMe,
 		Nickname: u.NickName,
+		WechatOpenId: sql.NullString{
+			String: u.WechatInfo.OpenId,
+			Valid:  u.WechatInfo.OpenId != "",
+		},
+		WechatUnionId: sql.NullString{
+			String: u.WechatInfo.UnionId,
+			Valid:  u.WechatInfo.UnionId != "",
+		},
 	}
 }
 
@@ -149,6 +159,15 @@ func (repo *CachedUserRepository) FindByIdV1(ctx *gin.Context, uid int64) (domai
 
 func (repo *CachedUserRepository) FindByPhone(ctx context.Context, phone string) (domain.User, error) {
 	u, err := repo.dao.FindByPhone(ctx, phone)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return repo.toDomain(u), nil
+
+}
+
+func (repo *CachedUserRepository) FindByWechat(ctx context.Context, openId string) (domain.User, error) {
+	u, err := repo.dao.FindByWechat(ctx, openId)
 	if err != nil {
 		return domain.User{}, err
 	}
