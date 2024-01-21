@@ -7,6 +7,7 @@ import (
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"net/http"
 	"time"
 )
@@ -34,6 +35,7 @@ func NewUserHandler(svc service.UserService, codeSvc service.CodeService) *UserH
 		passwordRexExp: regexp.MustCompile(passwordRegexPattern, regexp.None),
 		svc:            svc,
 		codeSvc:        codeSvc,
+		JWTHandler:     newJWTHandler(),
 	}
 }
 
@@ -52,6 +54,8 @@ func (h *UserHandler) RegisterRouters(server *gin.Engine) {
 	// POST /users/login
 	//ug.POST("/login", h.LogIn)
 	ug.POST("/login", h.LogInJWT)
+	ug.POST("/logout", h.LogoutJWT)
+	ug.POST("/refresh_token", h.RefreshToken)
 	// POST /users/edit
 	ug.POST("/edit", h.Edit)
 	// POST /users/profile
@@ -147,8 +151,11 @@ func (h *UserHandler) LoginSMS(ctx *gin.Context) {
 		})
 		return
 	}
-	// 若没返回错误，则登陆成功，设置JWTToken
-	h.setJWTToken(ctx, u.Id)
+	err = h.setLoginToken(ctx, u.Id)
+	if err != nil {
+		ctx.String(http.StatusOK, "系统错误！")
+
+	}
 	ctx.JSON(http.StatusOK, Result{
 		Msg: "登陆成功",
 	})
@@ -280,7 +287,11 @@ func (h *UserHandler) LogInJWT(ctx *gin.Context) {
 	case service.ErrInvalidUserOrPassword:
 		ctx.String(http.StatusOK, "账号或密码错误，请重新输入！")
 	case nil:
-		h.setJWTToken(ctx, u.Id)
+		err = h.setLoginToken(ctx, u.Id)
+		if err != nil {
+			ctx.String(http.StatusOK, "系统错误！")
+
+		}
 		ctx.String(http.StatusOK, "登陆成功！")
 	default:
 		ctx.String(http.StatusOK, "系统错误！")
@@ -410,4 +421,68 @@ func (h *UserHandler) Profile(ctx *gin.Context) {
 		Birthday: u.BirthDay.Format(time.DateOnly),
 	})
 
+}
+
+func (h *UserHandler) RefreshToken(ctx *gin.Context) {
+	// 约定 前端在 Authorization 里面带上这个 refresh_token
+	tokenStr := ExtractToken(ctx)
+	var rc RefreshClaims
+	token, err := jwt.ParseWithClaims(tokenStr, &rc, func(token *jwt.Token) (interface{}, error) {
+		return h.JWTHandler.refreshKey, nil
+	})
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	if token == nil || token.Valid {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	// 在这里去校验 ssid 是否失效，因为我们可以在前面先校验一下 token ，避免无效的查询 Redis
+
+	cnt, err := h.client.Exists(ctx, fmt.Sprintf("users:ssid:%s", rc.Ssid)).Result()
+
+	// 这种判定方式过于严格，因为一旦 redis 崩溃了，就无法继访问服务
+	if err != nil || cnt > 0 {
+		// ssid 无效或者 redis 有问题
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	// 这种写法可以兼容 redis 异常的情况，就是即便 redis 崩溃了，但是用户依然可以访问服务
+	// 但是要做好监控，有没有 error
+	//if cnt > 0 {
+	//	// ssid 无效
+	//	ctx.AbortWithStatus(http.StatusUnauthorized)
+	//	return
+	//}
+
+	// 在这里重新设置新的JWTToken，并且重新生成了长token
+	// 但是之前的长token也还有效，所以缺点是如果别人拿到了之前的长token也还可以用
+	// 如果说我们就设置为7天登陆一次，那么这里就不要重新生成长token
+	err = h.setJWTToken(ctx, rc.Uid, rc.Ssid)
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	ctx.JSON(http.StatusOK, Result{
+		Msg: "OK",
+	})
+
+}
+
+func (h *UserHandler) LogoutJWT(ctx *gin.Context) {
+	err := h.ClearToken(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "系统错误",
+		})
+		return
+	}
+	ctx.JSON(http.StatusOK, Result{
+		Msg: "退出登陆成功！",
+	})
 }

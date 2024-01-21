@@ -31,7 +31,7 @@ func InitGinMiddleWares(redisClient redis.Cmdable) []gin.HandlerFunc {
 			AllowCredentials: true,                                      // cookie的数据是否允许传过来，正常情况下允许
 			AllowHeaders:     []string{"Content-Type", "Authorization"}, //报错，根据报错找到需要添加的headers
 			// 允许前端访问后端响应中带的头部
-			ExposeHeaders: []string{"x-jwt-token"},
+			ExposeHeaders: []string{"x-jwt-token", "x-refresh-token"},
 			AllowOriginFunc: func(origin string) bool {
 				if strings.HasPrefix(origin, "http://localhost") {
 					return true
