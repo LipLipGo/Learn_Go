@@ -3,6 +3,7 @@ package web
 import (
 	"Learn_Go/webook/internal/service"
 	"Learn_Go/webook/internal/service/oauth2/wechat"
+	ijwt "Learn_Go/webook/internal/web/jwt"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -13,18 +14,18 @@ import (
 type OAuth2WechatHandler struct {
 	svc             wechat.Service
 	userSvc         service.UserService // 微信登陆也是属于userSvc的服务的
-	JWTHandler                          // 这个不用初始化，因为这个结构体，如果是指针的话就需要初始化
+	ijwt.Handler                        // 这个不用初始化，因为这个结构体，如果是指针的话就需要初始化
 	key             []byte
 	stateCookieName string
 }
 
-func NewOAuth2WechatHandler(svc wechat.Service, userSvc service.UserService) *OAuth2WechatHandler {
+func NewOAuth2WechatHandler(svc wechat.Service, userSvc service.UserService, jwthdl ijwt.Handler) *OAuth2WechatHandler {
 	return &OAuth2WechatHandler{
 		svc:             svc,
 		userSvc:         userSvc,
 		key:             []byte("uF7hZ5sW5fZ7jC1mY1wS9qQ4nQ2gN7lV"),
 		stateCookieName: "jwt-state",
-		JWTHandler:      newJWTHandler(),
+		Handler:         jwthdl,
 	}
 }
 
@@ -91,7 +92,7 @@ func (o *OAuth2WechatHandler) Callback(ctx *gin.Context) {
 		return
 	}
 	// 如果没有返回错误，那么就登陆成功，设置jwtToken
-	err = o.setLoginToken(ctx, u.Id)
+	err = o.SetLoginToken(ctx, u.Id)
 	if err != nil {
 		ctx.String(http.StatusOK, "系统错误！")
 		return

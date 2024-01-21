@@ -1,20 +1,20 @@
 package middleware
 
 import (
-	"Learn_Go/webook/internal/web"
-	"fmt"
+	ijwt "Learn_Go/webook/internal/web/jwt"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/redis/go-redis/v9"
 	"net/http"
 )
 
 type LoginJWTMiddlewareBuilder struct {
-	cmd redis.Cmdable
+	ijwt.Handler
 }
 
-func NewLoginJWTMiddlewareBuilder() *LoginMiddlewareBuilder {
-	return &LoginMiddlewareBuilder{}
+func NewLoginJWTMiddlewareBuilder(hdl ijwt.Handler) *LoginJWTMiddlewareBuilder {
+	return &LoginJWTMiddlewareBuilder{
+		Handler: hdl,
+	}
 }
 
 func (m *LoginJWTMiddlewareBuilder) CheckLogin() gin.HandlerFunc {
@@ -31,10 +31,10 @@ func (m *LoginJWTMiddlewareBuilder) CheckLogin() gin.HandlerFunc {
 			return
 		}
 
-		tokenStr := web.ExtractToken(ctx)
-		var uc web.UserClaims
+		tokenStr := m.ExtractToken(ctx)
+		var uc ijwt.UserClaims
 		token, err := jwt.ParseWithClaims(tokenStr, &uc, func(token *jwt.Token) (interface{}, error) { // 这里 uc 需要传指针
-			return web.JWTKey, nil
+			return ijwt.JWTKey, nil
 		})
 		if err != nil {
 			// token不对，token是伪造的
@@ -58,10 +58,11 @@ func (m *LoginJWTMiddlewareBuilder) CheckLogin() gin.HandlerFunc {
 
 		// 在这里去校验 ssid 是否失效，因为我们可以在前面先校验一下 token ，避免无效的查询 Redis
 
-		cnt, err := m.cmd.Exists(ctx, fmt.Sprintf("users:ssid:%s", uc.Ssid)).Result()
+		//cnt, err := m.cmd.Exists(ctx, fmt.Sprintf("users:ssid:%s", uc.Ssid)).Result()
+		err = m.CheckSession(ctx, uc.Ssid) // jwt 改造成面向接口编程之后，这里面判断了 ssid 的有效性
 
 		// 这种判定方式过于严格，因为一旦 redis 崩溃了，就无法继访问服务
-		if err != nil || cnt > 0 {
+		if err != nil {
 			// ssid 无效或者 redis 有问题
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return

@@ -3,6 +3,7 @@ package web
 import (
 	"Learn_Go/webook/internal/domain"
 	"Learn_Go/webook/internal/service"
+	ijwt "Learn_Go/webook/internal/web/jwt"
 	"fmt"
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
@@ -26,16 +27,16 @@ type UserHandler struct {
 	passwordRexExp *regexp.Regexp
 	svc            service.UserService
 	codeSvc        service.CodeService
-	JWTHandler
+	ijwt.Handler
 }
 
-func NewUserHandler(svc service.UserService, codeSvc service.CodeService) *UserHandler { // 预编译正则表达式，保证正则表达式正确，性能优化
+func NewUserHandler(svc service.UserService, codeSvc service.CodeService, jwthdl ijwt.Handler) *UserHandler { // 预编译正则表达式，保证正则表达式正确，性能优化
 	return &UserHandler{
 		emailRexExp:    regexp.MustCompile(emailRegexPattern, regexp.None),
 		passwordRexExp: regexp.MustCompile(passwordRegexPattern, regexp.None),
 		svc:            svc,
 		codeSvc:        codeSvc,
-		JWTHandler:     newJWTHandler(),
+		Handler:        jwthdl,
 	}
 }
 
@@ -151,7 +152,7 @@ func (h *UserHandler) LoginSMS(ctx *gin.Context) {
 		})
 		return
 	}
-	err = h.setLoginToken(ctx, u.Id)
+	err = h.SetLoginToken(ctx, u.Id)
 	if err != nil {
 		ctx.String(http.StatusOK, "系统错误！")
 
@@ -287,7 +288,7 @@ func (h *UserHandler) LogInJWT(ctx *gin.Context) {
 	case service.ErrInvalidUserOrPassword:
 		ctx.String(http.StatusOK, "账号或密码错误，请重新输入！")
 	case nil:
-		err = h.setLoginToken(ctx, u.Id)
+		err = h.SetLoginToken(ctx, u.Id)
 		if err != nil {
 			ctx.String(http.StatusOK, "系统错误！")
 
@@ -313,7 +314,7 @@ func (h *UserHandler) Edit(ctx *gin.Context) {
 		return
 	}
 
-	uc, ok := ctx.MustGet("user").(UserClaims)
+	uc, ok := ctx.MustGet("user").(ijwt.UserClaims)
 
 	if !ok {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
@@ -396,7 +397,7 @@ func (h *UserHandler) Edit(ctx *gin.Context) {
 
 func (h *UserHandler) Profile(ctx *gin.Context) {
 
-	uc, ok := ctx.MustGet("user").(UserClaims)
+	uc, ok := ctx.MustGet("user").(ijwt.UserClaims)
 	if !ok {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 		return
@@ -425,10 +426,10 @@ func (h *UserHandler) Profile(ctx *gin.Context) {
 
 func (h *UserHandler) RefreshToken(ctx *gin.Context) {
 	// 约定 前端在 Authorization 里面带上这个 refresh_token
-	tokenStr := ExtractToken(ctx)
-	var rc RefreshClaims
+	tokenStr := h.ExtractToken(ctx)
+	var rc ijwt.RefreshClaims
 	token, err := jwt.ParseWithClaims(tokenStr, &rc, func(token *jwt.Token) (interface{}, error) {
-		return h.JWTHandler.refreshKey, nil
+		return ijwt.RefreshJWTKey, nil
 	})
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
@@ -442,10 +443,11 @@ func (h *UserHandler) RefreshToken(ctx *gin.Context) {
 
 	// 在这里去校验 ssid 是否失效，因为我们可以在前面先校验一下 token ，避免无效的查询 Redis
 
-	cnt, err := h.client.Exists(ctx, fmt.Sprintf("users:ssid:%s", rc.Ssid)).Result()
+	//cnt, err := h.client.Exists(ctx, fmt.Sprintf("users:ssid:%s", rc.Ssid)).Result()
+	err = h.CheckSession(ctx, rc.Ssid) // jwt 改造成面向接口编程之后，这里面判断了 ssid 的有效性
 
 	// 这种判定方式过于严格，因为一旦 redis 崩溃了，就无法继访问服务
-	if err != nil || cnt > 0 {
+	if err != nil {
 		// ssid 无效或者 redis 有问题
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 		return
@@ -462,7 +464,7 @@ func (h *UserHandler) RefreshToken(ctx *gin.Context) {
 	// 在这里重新设置新的JWTToken，并且重新生成了长token
 	// 但是之前的长token也还有效，所以缺点是如果别人拿到了之前的长token也还可以用
 	// 如果说我们就设置为7天登陆一次，那么这里就不要重新生成长token
-	err = h.setJWTToken(ctx, rc.Uid, rc.Ssid)
+	err = h.SetJWTToken(ctx, rc.Uid, rc.Ssid)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 		return

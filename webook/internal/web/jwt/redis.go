@@ -1,29 +1,65 @@
-package web
+package jwt
 
 import (
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"net/http"
 	"strings"
 	"time"
 )
 
-type JWTHandler struct {
-	refreshKey   []byte
+type RedisJWTHandler struct {
 	client       redis.Cmdable
 	rcExpiration time.Duration
 }
 
-func newJWTHandler() JWTHandler {
-	return JWTHandler{
-		refreshKey:   []byte("uF7hZ5sW5fZ7jC1mY1wS9qQ4nQ2gN7VB"),
+func NewRedisJWTHandler(client redis.Cmdable) Handler {
+	return &RedisJWTHandler{
+		client:       client,
 		rcExpiration: time.Hour * 24 * 7,
 	}
 }
 
-func (h *JWTHandler) setLoginToken(ctx *gin.Context, uid int64) error {
+func (h *RedisJWTHandler) CheckSession(ctx *gin.Context, ssid string) error {
+	// 在这里去校验 ssid 是否失效，因为我们可以在前面先校验一下 token ，避免无效的查询 Redis
+
+	cnt, err := h.client.Exists(ctx, fmt.Sprintf("users:ssid:%s", ssid)).Result()
+
+	if err != nil {
+		return err
+	}
+
+	// 这种判定方式过于严格，因为一旦 redis 崩溃了，就无法继访问服务
+	if cnt > 0 {
+		// ssid 无效或者 redis 有问题
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return errors.New("token 无效")
+	}
+	return nil
+}
+
+func (h *RedisJWTHandler) ExtractToken(ctx *gin.Context) string {
+	// 根据约定，token 在Authorization 头部
+	// Bearer XXXXXX
+	authCode := ctx.GetHeader("Authorization")
+	if authCode == "" {
+		return authCode
+	}
+	segs := strings.Split(authCode, " ") // 按照空格切割字符串，头部分为两部分 Bearer XXXXXX
+
+	if len(segs) != 2 { // 如果不是两部分，则不对
+		return ""
+	}
+	tokenStr := segs[1]
+	return tokenStr
+
+}
+
+func (h *RedisJWTHandler) SetLoginToken(ctx *gin.Context, uid int64) error {
 	// 生成ssid，这个是长的uuid
 	ssid := uuid.New().String()
 
@@ -33,11 +69,11 @@ func (h *JWTHandler) setLoginToken(ctx *gin.Context, uid int64) error {
 		return err
 
 	}
-	return h.setJWTToken(ctx, uid, ssid)
+	return h.SetJWTToken(ctx, uid, ssid)
 
 }
 
-func (h *JWTHandler) ClearToken(ctx *gin.Context) error {
+func (h *RedisJWTHandler) ClearToken(ctx *gin.Context) error {
 	// 将前端更新的长短 token 设置为非法值
 	ctx.Header("x-jwt-token", "")
 	ctx.Header("x-refresh-token", "")
@@ -49,7 +85,7 @@ func (h *JWTHandler) ClearToken(ctx *gin.Context) error {
 
 // 因为多处需要使用到这个方法，我们把它抽出来，单独放在一个地方，然后在使用到的地方组合它
 // 设置短token
-func (h *JWTHandler) setJWTToken(ctx *gin.Context, uid int64, ssid string) error {
+func (h *RedisJWTHandler) SetJWTToken(ctx *gin.Context, uid int64, ssid string) error {
 
 	uc := UserClaims{ // Claims就表示数据
 		Uid:       uid,
@@ -69,7 +105,7 @@ func (h *JWTHandler) setJWTToken(ctx *gin.Context, uid int64, ssid string) error
 }
 
 // 设置长token
-func (h *JWTHandler) setRefreshJWTToken(ctx *gin.Context, uid int64, ssid string) error {
+func (h *RedisJWTHandler) setRefreshJWTToken(ctx *gin.Context, uid int64, ssid string) error {
 	rc := RefreshClaims{
 		Uid:  uid,
 		Ssid: ssid,
@@ -79,30 +115,13 @@ func (h *JWTHandler) setRefreshJWTToken(ctx *gin.Context, uid int64, ssid string
 		},
 	}
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS512, rc)
-	refreshTokenStr, err := refreshToken.SignedString(h.refreshKey)
+	refreshTokenStr, err := refreshToken.SignedString(RefreshJWTKey)
 	if err != nil {
 		return err
 	}
 	// 要记得在处理跨域请求那里加上这个header
 	ctx.Header("x-refresh-token", refreshTokenStr)
 	return nil
-
-}
-
-func ExtractToken(ctx *gin.Context) string {
-	// 根据约定，token 在Authorization 头部
-	// Bearer XXXXXX
-	authCode := ctx.GetHeader("Authorization")
-	if authCode == "" {
-		return authCode
-	}
-	segs := strings.Split(authCode, " ") // 按照空格切割字符串，头部分为两部分 Bearer XXXXXX
-
-	if len(segs) != 2 { // 如果不是两部分，则不对
-		return ""
-	}
-	tokenStr := segs[1]
-	return tokenStr
 
 }
 
@@ -120,3 +139,4 @@ type UserClaims struct {
 }
 
 var JWTKey = []byte("uF7hZ5sW5fZ7jC1mY1wS9qQ4nQ2gN7lJ")
+var RefreshJWTKey = []byte("uF7hZ5sW5fZ7jC1mY1wS9qQ4nQ2gN7VB")
