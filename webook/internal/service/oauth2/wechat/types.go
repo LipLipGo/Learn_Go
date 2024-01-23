@@ -2,6 +2,7 @@ package wechat
 
 import (
 	"Learn_Go/webook/internal/domain"
+	"Learn_Go/webook/pkg/logger"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,13 +21,15 @@ type service struct {
 	appId     string // 一般来说是固定的
 	appSecret string
 	client    *http.Client
+	l         logger.LoggerV1
 }
 
-func NewWechatService(appId string, appSecret string) Service {
+func NewWechatService(appId string, appSecret string, l logger.LoggerV1) Service {
 	return &service{
 		appId:     appId,
 		client:    http.DefaultClient, // 这里使用这个，是因为很少会去改这个，如果后面有需求，可以做成依赖注入的形式
 		appSecret: appSecret,
+		l:         l,
 	}
 }
 

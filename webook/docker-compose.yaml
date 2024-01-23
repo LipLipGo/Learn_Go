@@ -8,10 +8,10 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: root   # 根用户密码
     volumes:
-#  设置初始化脚本
+      #  设置初始化脚本
       - ./script/mysql:/docker-entrypoint-initdb.d/
     ports:
-#    外部访问使用13316
+      #    外部访问使用13316
       - 13316:3306
   redis:
     image: "bitnami/redis:latest"
@@ -20,6 +20,14 @@ services:
       - ALLOW_EMPTY_PASSWORD=yes  # 允许不使用密码访问
     ports:
       - '6379:6379'
+
+  etcd:
+    image: "bitnami/etcd:latest"
+    restart: always
+    environment:
+      - ALLOW_NONE_AUTHENTICATION=yes
+    ports:
+      - "12379:2379"
 
 
 

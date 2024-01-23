@@ -6,7 +6,7 @@ type config struct {
 }
 
 type DBConfig struct {
-	DNS string
+	DSN string
 }
 
 type RedisConfig struct {

@@ -1,15 +1,20 @@
 package main
 
 import (
-	"Learn_Go/webook/internal/web/middleware"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
+	"bytes"
+	"github.com/fsnotify/fsnotify"
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
+	_ "github.com/spf13/viper/remote"
+	"go.uber.org/zap"
+	"log"
 	"net/http"
 )
 
 func main() {
-
+	initViperRemoteWatch()
+	initLogger() // 一般来说，需要先读取一些配置，再初始化日志模块
 	server := InitWebServer()
 	//db := initDB()
 	//rd := initRedis()
@@ -24,6 +29,130 @@ func main() {
 	})
 
 	server.Run(":8080")
+}
+
+func initLogger() {
+	Logger, err := zap.NewDevelopment() // 开发环境使用，线上环境使用 NewProduction
+	if err != nil {
+		panic(err)
+	}
+
+	zap.ReplaceGlobals(Logger) // 使用我们创建的 Logger 替换掉里面的全局包变量
+}
+
+// 第一种写法
+func initViper() {
+	viper.SetConfigName("dev")    // 配置文件名
+	viper.SetConfigType("yaml")   // 配置文件类型
+	viper.AddConfigPath("config") // 当前工作目录的 config 子目录
+	err := viper.ReadInConfig()
+	if err != nil {
+		panic(err)
+	}
+	val := viper.Get("test.key")
+	log.Println(val)
+}
+
+// 第二种写法，直接设置配置文件路径
+func initViperV1() {
+	////viper.SetDefault("db.dsn", "localhost:3306") // 默认值，或者在初始化结构体配置的时候给一个默认值
+	//viper.SetConfigFile("config/dev.yaml")
+	//err := viper.ReadInConfig()
+	//if err != nil {
+	//	panic(err)
+	//}
+	//val := viper.Get("test.key")
+	//log.Println(val)
+
+	// 通过读取启动参数来设置不同环境的配置
+	cfile := pflag.String("config", "config/config.yaml",
+		"配置文件路径") // 这里得到的是指针
+	pflag.Parse() // 这一步之后 cfile 里面才有值
+	viper.SetConfigFile(*cfile)
+	err := viper.ReadInConfig()
+	if err != nil {
+		panic(err)
+	}
+
+}
+
+func initViperWatch() {
+	cfile := pflag.String("config", "config/config.yaml",
+		"配置文件路径") // 这里得到的是指针
+	pflag.Parse() // 这一步之后 cfile 里面才有值
+	viper.SetConfigFile(*cfile)
+
+	// 在这里监听配置文件的变更
+	viper.WatchConfig()
+	viper.OnConfigChange(func(in fsnotify.Event) {
+		log.Println(viper.GetString("test.key")) // 输出变更后的配置
+	})
+	err := viper.ReadInConfig()
+	if err != nil {
+		panic(err)
+	}
+}
+
+// 这种方式一般就是在测试或者调试的阶段使用
+func initViperV2() {
+	// 直接将配置文件内容以字符串的形式定义
+	cfg := `		
+test:
+  key: value1
+
+redis:
+  addr: "localhost:6379"
+
+db:
+  dsn: "root:root@tcp(localhost:13316)/webook"
+
+`
+	err := viper.ReadConfig(bytes.NewReader([]byte(cfg)))
+	if err != nil {
+		panic(err)
+	}
+}
+
+// 使用 viper 接入 etcd （远程配置中心）
+func initViperRemote() {
+	err := viper.AddRemoteProvider("etcd3", "http://127.0.0.1:12379",
+		"C:/Program Files/Git/webook") // 整个项目的配置放在 etcd 中的 path 路径下
+	if err != nil {
+		panic(err)
+	}
+	viper.SetConfigType("yaml")    // 配置的文件格式
+	err = viper.ReadRemoteConfig() // 将远程的配置拉到本地
+	if err != nil {
+		panic(err)
+	}
+}
+
+// 监听远程配置中心变更
+func initViperRemoteWatch() {
+	err := viper.AddRemoteProvider("etcd3", "http://127.0.0.1:12379",
+		"C:/Program Files/Git/webook") // 整个项目的配置放在 etcd 中的 path 路径下
+	if err != nil {
+		panic(err)
+	}
+	viper.SetConfigType("yaml") // 配置的文件格式
+
+	err = viper.ReadRemoteConfig() // 将远程的配置拉到本地
+	if err != nil {
+		panic(err)
+	}
+
+	// 新开一个 go routine 来监听变更，因为 viper 不是线程安全的，并且需要放在这后面，防止一边读写并发安全问题
+	go func() {
+		for {
+			err = viper.WatchRemoteConfig()
+			if err != nil {
+				panic(err)
+			}
+			//log.Println("Watch:", viper.GetString("test.key"))
+			//time.Sleep(time.Second * 3)
+		}
+	}()
+
 }
 
 // 下面是使用wire改造前的代码
@@ -101,24 +230,24 @@ func main() {
 //		loginJWT := middleware.LoginJWTMiddlewareBuilder{}
 //		server.Use(loginJWT.CheckLogin())
 //	}
-func useSession(server *gin.Engine) {
-	// 登陆校验
-	login := &middleware.LoginMiddlewareBuilder{}
-	// 存储数据的，也就是 userId 存哪里
-	// 1.直接存 Cookie
-	store := cookie.NewStore([]byte("secret"))
-
-	// 2.使用 memstore 内存的实现， 需要传入两个key ，第一个用于 authentication 用于身份认证，第二个用于 encryption 用于数据加密，可通过工具生成
-	// store := memstore.NewStore([]byte("uF7hZ5sW5fZ7jC1mY1wS9qQ4nQ2gN7lJ"), []byte("yY3aL4pO2iQ5vA5jE9yQ0vN1sC2vW4rN"))
-
-	// 3.使用 redis 实现，需要启动 redis 服务，传入参数 size 表示连接数 + network “tcp” + address “主机+端口” + password 未设置 + 两个key
-	//store, err := redis.NewStore(16, "tcp", "localhost:6379", "",
-	//	[]byte("uF7hZ5sW5fZ7jC1mY1wS9qQ4nQ2gN7lJ"), []byte("yY3aL4pO2iQ5vA5jE9yQ0vN1sC2vW4rN"))
-	//if err != nil {
-	//	panic(err)
-	//}
-	server.Use(sessions.Sessions("ssid", store), login.CheckLogin()) // 先初始化session，再校验
-
-}
+//func useSession(server *gin.Engine) {
+//	// 登陆校验
+//	login := &middleware.LoginMiddlewareBuilder{}
+//	// 存储数据的，也就是 userId 存哪里
+//	// 1.直接存 Cookie
+//	store := cookie.NewStore([]byte("secret"))
+//
+//	// 2.使用 memstore 内存的实现， 需要传入两个key ，第一个用于 authentication 用于身份认证，第二个用于 encryption 用于数据加密，可通过工具生成
+//	// store := memstore.NewStore([]byte("uF7hZ5sW5fZ7jC1mY1wS9qQ4nQ2gN7lJ"), []byte("yY3aL4pO2iQ5vA5jE9yQ0vN1sC2vW4rN"))
+//
+//	// 3.使用 redis 实现，需要启动 redis 服务，传入参数 size 表示连接数 + network “tcp” + address “主机+端口” + password 未设置 + 两个key
+//	//store, err := redis.NewStore(16, "tcp", "localhost:6379", "",
+//	//	[]byte("uF7hZ5sW5fZ7jC1mY1wS9qQ4nQ2gN7lJ"), []byte("yY3aL4pO2iQ5vA5jE9yQ0vN1sC2vW4rN"))
+//	//if err != nil {
+//	//	panic(err)
+//	//}
+//	server.Use(sessions.Sessions("ssid", store), login.CheckLogin()) // 先初始化session，再校验
+//
+//}
 
 //后端处理  1.接受请求并校验	 2.调用业务逻辑处理请求  3.根据业务逻辑处理结果返回响应

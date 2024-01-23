@@ -1,6 +1,7 @@
 package ioc
 
 import (
+	"Learn_Go/webook/config"
 	"Learn_Go/webook/internal/service/sms"
 	"Learn_Go/webook/internal/service/sms/localsms"
 	"Learn_Go/webook/internal/service/sms/tencent"
@@ -22,7 +23,7 @@ func InitSmsService() sms.Service {
 
 func initTencentSmsService() sms.Service {
 	rdb := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: config.Config.Redis.Addr,
 	})
 	secretId, ok := os.LookupEnv("SMS_SECRET_ID")
 	if !ok {

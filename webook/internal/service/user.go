@@ -4,6 +4,7 @@ import (
 	"Learn_Go/webook/internal/domain"
 	"Learn_Go/webook/internal/repository"
 	"context"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -18,6 +19,7 @@ type UserService interface {
 
 type userService struct {
 	repo repository.UserRepository
+	//logger *zap.Logger
 }
 
 var (
@@ -28,6 +30,7 @@ var (
 func NewuserService(repo repository.UserRepository) UserService {
 	return &userService{
 		repo: repo,
+		//logger: zap.L(),	// 这里可以传入自定义的 Logger ，但大部分情况，这里使用 zap.L() 就可以，
 	}
 
 }
@@ -118,6 +121,7 @@ func (svc *userService) FindOrCreateByWechat(ctx context.Context, wechatInfo dom
 		return u, err
 	}
 	// 没有进去分支说明没找到用户，那么创建用户
+	zap.L().Info("新用户", zap.Any("wechatInfo", wechatInfo)) // 可以记录一下新用户
 	err = svc.repo.Create(ctx, domain.User{
 		WechatInfo: wechatInfo,
 	})

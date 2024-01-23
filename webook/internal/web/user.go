@@ -9,6 +9,7 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"go.uber.org/zap"
 	"net/http"
 	"time"
 )
@@ -99,6 +100,10 @@ func (h *UserHandler) SendSMSLoginCode(ctx *gin.Context) {
 			Code: 4,
 			Msg:  "短信发送太频繁，请稍后再试",
 		})
+		// 这种情况可能有人都不知道怎么触发的
+		// 少数这种情况可以接受
+		// 但是频繁出现这种情况，就代表有人在搞你的系统
+		zap.L().Warn("频繁发送验证码")
 	default:
 		ctx.JSON(http.StatusOK, Result{
 			Code: 5,
@@ -129,6 +134,14 @@ func (h *UserHandler) LoginSMS(ctx *gin.Context) {
 			Code: 5,
 			Msg:  "系统异常",
 		})
+
+		// 接入日志模块
+		zap.L().Error("手机验证码验证失败",
+			// 注意，类似手机号码这种信息，再生产环境绝对不可以打
+			// 研发环境可以随便打
+			zap.String("phone", req.Phone),
+			zap.Error(err))
+
 		return
 	}
 

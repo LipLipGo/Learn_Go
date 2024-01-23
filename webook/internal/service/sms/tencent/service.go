@@ -7,6 +7,7 @@ import (
 	"github.com/ecodeclub/ekit"
 	"github.com/ecodeclub/ekit/slice"
 	sms "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/sms/v20210111"
+	"go.uber.org/zap"
 )
 
 type Service struct {
@@ -27,7 +28,6 @@ func (s *Service) Send(ctx context.Context, tplId string, args []string, number 
 	//if limited {
 	//	return errors.New("触发了限流")
 	//}
-
 	request := sms.NewSendSmsRequest()
 	request.SetContext(ctx)
 	request.SmsSdkAppId = s.appId
@@ -37,6 +37,11 @@ func (s *Service) Send(ctx context.Context, tplId string, args []string, number 
 	request.PhoneNumberSet = s.toPtrSlice(number)
 	// 通过client对象调用想要访问的接口，需要传入请求对象
 	response, err := s.client.SendSms(request)
+
+	// 可以将请求和响应DEBUG一下，查看一下数据有没有错误
+	zap.L().Debug("调用腾讯短信服务", zap.Any("request:", request),
+		zap.Any("response", response))
+
 	// 处理异常
 	if err != nil {
 		fmt.Printf("An API error has returned: %s", err)

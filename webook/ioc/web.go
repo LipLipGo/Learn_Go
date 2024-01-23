@@ -6,6 +6,8 @@ import (
 	"Learn_Go/webook/internal/web/middleware"
 	"Learn_Go/webook/pkg/ginx/middleware/ratelimit"
 	"Learn_Go/webook/pkg/limiter"
+	"Learn_Go/webook/pkg/logger"
+	"context"
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -23,7 +25,7 @@ func InitWebServer(mdls []gin.HandlerFunc, userHdl *web.UserHandler, authHdl *we
 
 }
 
-func InitGinMiddleWares(redisClient redis.Cmdable, hdl ijwt.Handler) []gin.HandlerFunc {
+func InitGinMiddleWares(redisClient redis.Cmdable, hdl ijwt.Handler, l logger.LoggerV1) []gin.HandlerFunc {
 	return []gin.HandlerFunc{
 		cors.New(cors.Config{ // 通过 Middleware（cors） 处理跨域请求
 			//AllowAllOrigins: true,	允许所有的源头
@@ -45,6 +47,9 @@ func InitGinMiddleWares(redisClient redis.Cmdable, hdl ijwt.Handler) []gin.Handl
 			fmt.Println("这是一个 Middleware")
 		},
 		ratelimit.NewBuilder(limiter.NewRedisSlidingWindowLimiter(redisClient, time.Second, 100)).Build(),
+		middleware.NewLogMiddlewareBuilder(func(ctx context.Context, lc middleware.LogContent) {
+			l.Debug("", logger.Field{Key: "req", Value: lc})
+		}).AllowReqBody().AllowRespBody().Build(),
 		middleware.NewLoginJWTMiddlewareBuilder(hdl).CheckLogin(),
 
 		// 使用 session 登录校验
