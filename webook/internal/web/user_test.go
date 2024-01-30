@@ -5,10 +5,12 @@ import (
 	"Learn_Go/webook/internal/repository"
 	"Learn_Go/webook/internal/service"
 	svcmocks "Learn_Go/webook/internal/service/mocks"
+	ijwt "Learn_Go/webook/internal/web/jwt"
 	"bytes"
 	"context"
 	"errors"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 	"net/http"
@@ -288,7 +290,7 @@ func TestUserHandler_SignUp(t *testing.T) {
 			userSvc, codeSvc := tc.mock(ctrl)
 
 			server := gin.Default()
-			h := NewUserHandler(userSvc, codeSvc)
+			h := NewUserHandler(userSvc, codeSvc, ijwt.NewRedisJWTHandler(redis.NewClient(&redis.Options{Addr: ""})))
 			h.RegisterRouters(server)
 
 			req := tc.reqBuilder(t)
